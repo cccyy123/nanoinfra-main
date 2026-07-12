@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from tqdm.auto import tqdm
 
 import spec
 
@@ -25,6 +26,8 @@ RESULTS = HERE / "results"
 RESULTS.mkdir(exist_ok=True)
 
 EVAL_RE = re.compile(r"Step\s+(\d+)\s+\|\s+val/text_ce:\s+([\d.]+)")
+STEP_RE = re.compile(r"^Step\s+(\d+)(?:/\d+)?")
+LOSS_RE = re.compile(r"\|\s+loss:\s+([\d.]+)")
 
 
 def eval_schedule(max_steps, n=spec.N_EVALS, first=5):
@@ -44,14 +47,70 @@ def run_arm(label, trunk_class, mlp_ratio, max_steps, steps):
     ov = spec.train_overrides(trunk_class, max_steps, steps)
     print(f"[run ] {label} (ratio={mlp_ratio}x, trunk={trunk_class or 'GPT'}): "
           f"d{spec.DEPTH} -> {max_steps} steps ...", flush=True)
-    out = subprocess.run([sys.executable, "-u", "-m", spec.ORCHESTRATOR, *ov],
-                         cwd=REPO, env={**os.environ, "PYTHONPATH": str(REPO)},
-                         capture_output=True, text=True)
-    text = out.stdout + "\n" + out.stderr
-    traj = [{"step": int(s), "val": float(v)} for s, v in EVAL_RE.findall(text)]
-    if out.returncode != 0 or len(traj) < 3:
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(REPO),
+        "PYTHONUNBUFFERED": "1",
+    }
+    proc = subprocess.Popen(
+        [sys.executable, "-u", "-m", spec.ORCHESTRATOR, *ov],
+        cwd=REPO,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    log_lines = []
+    traj = []
+    progress = tqdm(
+        total=max_steps,
+        desc=label,
+        unit="step",
+        dynamic_ncols=True,
+        leave=True,
+    )
+    try:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            log_lines.append(line)
+            stripped = line.rstrip()
+
+            eval_match = EVAL_RE.search(stripped)
+            if eval_match:
+                eval_step = int(eval_match.group(1))
+                eval_value = float(eval_match.group(2))
+                traj.append({"step": eval_step, "val": eval_value})
+                progress.set_postfix(val_ce=f"{eval_value:.4f}", refresh=False)
+                tqdm.write(f"[{label}] {stripped}")
+
+            step_match = STEP_RE.match(stripped)
+            if step_match:
+                # Trainer steps are zero-indexed: a log for step 0 means one
+                # optimizer step has completed, while the last is max_steps-1.
+                completed = min(int(step_match.group(1)) + 1, max_steps)
+                if completed > progress.n:
+                    progress.update(completed - progress.n)
+                loss_match = LOSS_RE.search(stripped)
+                if loss_match:
+                    progress.set_postfix(loss=loss_match.group(1), refresh=False)
+            elif stripped:
+                # Startup information and tracebacks remain visible instead of
+                # being hidden in subprocess.capture_output until the arm ends.
+                tqdm.write(f"[{label}] {stripped}")
+    except KeyboardInterrupt:
+        proc.terminate()
+        proc.wait()
+        raise
+    finally:
+        progress.close()
+
+    returncode = proc.wait()
+    text = "".join(log_lines)
+    if returncode != 0 or len(traj) < 3:
         raise SystemExit(
-            f"arm {label} FAILED (rc={out.returncode}, {len(traj)} evals):\n{text[-3000:]}")
+            f"arm {label} FAILED (rc={returncode}, {len(traj)} evals):\n{text[-3000:]}")
     print(f"[done] {label}: {len(traj)} evals, "
           f"val {traj[0]['val']:.3f} -> {traj[-1]['val']:.3f}", flush=True)
     return {"arm": label, "mlp_ratio": mlp_ratio, "trunk_class": trunk_class,
@@ -67,7 +126,8 @@ def main():
     RATIO_MAP = {"ratio_2x": 2.0, "ratio_4x": 4.0, "ratio_6x": 6.0, "ratio_8x": 8.0}
 
     arms_data = []
-    for label, trunk_class in spec.ARMS:
+    for arm_idx, (label, trunk_class) in enumerate(spec.ARMS, start=1):
+        print(f"\n=== Arm {arm_idx}/{len(spec.ARMS)}: {label} ===", flush=True)
         ratio = RATIO_MAP[label]
         arm = run_arm(label, trunk_class, ratio, max_steps, steps)
         N = count_params(spec.DEPTH, dim, ratio)
