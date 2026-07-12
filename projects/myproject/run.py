@@ -27,6 +27,8 @@ RESULTS = HERE / "results"
 RESULTS.mkdir(exist_ok=True)
 
 EVAL_RE = re.compile(r"Step\s+(\d+)\s+\|\s+val/text_ce:\s+([\d.]+)")
+# Training loss: "Step 00100/01220 (  8.2%) | loss: X.XXXXXX | ..."
+TRAIN_LOSS_RE = re.compile(r"Step\s+(\d+)/\d+\s+\(.*?\)\s+\|\s+loss:\s+([\d.]+)")
 
 
 def eval_schedule(max_steps, n=spec.N_EVALS, first=5):
@@ -51,14 +53,15 @@ def run_arm(label, trunk_class, mlp_ratio, max_steps, steps):
                          cwd=REPO, env={**os.environ, "PYTHONPATH": str(REPO)},
                          capture_output=True, text=True)
     text = out.stdout + "\n" + out.stderr
-    traj = [{"step": int(s), "val": float(v)} for s, v in EVAL_RE.findall(text)]
-    if out.returncode != 0 or len(traj) < 3:
+    val_traj = [{"step": int(s), "val": float(v)} for s, v in EVAL_RE.findall(text)]
+    train_traj = [{"step": int(s), "loss": float(v)} for s, v in TRAIN_LOSS_RE.findall(text)]
+    if out.returncode != 0 or len(val_traj) < 3:
         raise SystemExit(
-            f"arm {label} FAILED (rc={out.returncode}, {len(traj)} evals):\n{text[-3000:]}")
-    print(f"[done] {label}: {len(traj)} evals, "
-          f"val {traj[0]['val']:.3f} -> {traj[-1]['val']:.3f}", flush=True)
+            f"arm {label} FAILED (rc={out.returncode}, {len(val_traj)} evals):\n{text[-3000:]}")
+    print(f"[done] {label}: {len(val_traj)} val evals, {len(train_traj)} train logs, "
+          f"val {val_traj[0]['val']:.3f} -> {val_traj[-1]['val']:.3f}", flush=True)
     return {"arm": label, "mlp_ratio": mlp_ratio, "trunk_class": trunk_class,
-            "trajectory": traj}
+            "trajectory": val_traj, "train_loss": train_traj}
 
 
 def main():
