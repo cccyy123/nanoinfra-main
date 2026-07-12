@@ -26,6 +26,11 @@ WARMUP_STEPS = 100
 N_EVALS = 30               # log-spaced val evals
 EVAL_TOKENS = 131072       # 128K val tokens/eval — cheap; only relative CE matters
 
+# Set to True when network is unavailable (e.g. AutoDL without HF access).
+# Uses random synthetic tokens — proves the pipeline, but CE is meaningless.
+# Switch to False with real FineWeb parquet data for actual results.
+USE_SYNTHETIC = True
+
 ORCHESTRATOR = "modalities.text.train_text"
 
 # ---------------------------------------------------------------------------
@@ -79,4 +84,6 @@ def train_overrides(trunk_class, max_steps, eval_at):
     }
     if trunk_class:
         ov["model.trunk_class"] = trunk_class
+    if USE_SYNTHETIC:
+        ov["data.source"] = "synthetic"
     return [f"{k}={v}" for k, v in ov.items()]
