@@ -13,7 +13,7 @@ LR_MAX = "3e-4"
 SEED = 42
 
 SEQ_LEN, DBS, TBS = 512, 16, 16384
-MAX_TOKENS = 20_000_000    # tiny on purpose — a smoke test / worked example (minutes on one GPU)
+MAX_TOKENS = 200_000_000    # tiny on purpose — a smoke test / worked example (minutes on one GPU)
 WARMUP_STEPS = 100
 N_EVALS = 30               # log-spaced val evals
 EVAL_TOKENS = 131072       # 128K val tokens/eval — cheap; only relative CE matters here

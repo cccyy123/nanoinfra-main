@@ -6,7 +6,11 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 PROJECT="projects/yuze_example_ffn_expansion"
-LOG_DIR="$PROJECT/logs"
+RUN_TS=$(date '+%Y%m%d_%H%M%S')
+RUN_DIR="$PROJECT/results/$RUN_TS"
+LOG_DIR="$RUN_DIR/logs"
+export RESULTS_DIR="$RUN_DIR"
+
 mkdir -p "$LOG_DIR"
 rm -f "$LOG_DIR"/*.log
 
@@ -15,6 +19,7 @@ echo "========================================"
 echo "FFN Expansion Ablation Pipeline"
 echo "Start : $NOW"
 echo "Project: $PROJECT"
+echo "Run    : $RUN_TS"
 echo "========================================"
 
 # ── 1. Setup venv (auto-create if missing) ──────────────────────
@@ -101,6 +106,8 @@ fi
 
 echo ""
 echo "Done! Results:"
-echo "  JSON : $PROJECT/results/curves.json"
-echo "  PNG  : $PROJECT/ffn_expansion.png"
+echo "  Dir  : $RUN_DIR"
+echo "  JSON : $RUN_DIR/curves.json"
+echo "  PNG  : $RUN_DIR/ffn_expansion.png"
+echo "  YAML : $RUN_DIR/experiment.yaml"
 echo "  Logs : $LOG_DIR/"
