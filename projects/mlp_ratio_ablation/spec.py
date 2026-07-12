@@ -1,7 +1,8 @@
 """spec.py — MLP ratio ablation. THE one knob.
 
 Compare MLP expansion ratios: standard 4x vs 2x, 6x, 8x.
-Same depth, same dim, same data, same budget — only mlp_ratio varies.
+Same depth, same dim, same data, same budget — only the trunk class changes,
+each pinning a different mlp_ratio.
 
 This tests PARAMETER EFFICIENCY: does expanding the MLP wider buy more
 loss reduction than spending the same parameters elsewhere?
@@ -19,20 +20,21 @@ EVAL_TOKENS = 131072       # 128K val tokens per eval
 
 ORCHESTRATOR = "modalities.text.train_text"
 
-# Four arms: different mlp_ratios. The model param count changes with ratio.
+# Four arms — same model geometry, different MLP ratios via trunk_class
+# (no core edits: each trunk is a thin subclass of GPT)
 ARMS = [
-    ("ratio_2x", 2.0),
-    ("ratio_4x", 4.0),    # baseline — the standard transformer
-    ("ratio_6x", 6.0),
-    ("ratio_8x", 8.0),
+    ("ratio_2x", "projects.mlp_ratio_ablation.trunk.GPT_MLP2x"),
+    ("ratio_4x", None),    # None = the reference GPT (4x MLP by default)
+    ("ratio_6x", "projects.mlp_ratio_ablation.trunk.GPT_MLP6x"),
+    ("ratio_8x", "projects.mlp_ratio_ablation.trunk.GPT_MLP8x"),
 ]
 
 
-def train_overrides(mlp_ratio, max_steps, eval_at):
-    """Hydra CLI overrides. The ONLY thing that differs across arms is mlp_ratio."""
+def train_overrides(trunk_class, max_steps, eval_at):
+    """Hydra CLI overrides. The ONLY thing that differs across arms is
+    model.trunk_class."""
     ov = {
         "model.depth": DEPTH,
-        "model.mlp_ratio": mlp_ratio,
         "optimizer.lr_max": LR_MAX,
         "seed": SEED,
         "sequence_len": SEQ_LEN,
@@ -47,4 +49,6 @@ def train_overrides(mlp_ratio, max_steps, eval_at):
         "evaluation.text.eval_tokens": EVAL_TOKENS,
         "logging.log_every": 100,
     }
+    if trunk_class:
+        ov["model.trunk_class"] = trunk_class
     return [f"{k}={v}" for k, v in ov.items()]
