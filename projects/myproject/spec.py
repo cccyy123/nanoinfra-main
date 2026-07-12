@@ -85,5 +85,5 @@ def train_overrides(trunk_class, max_steps, eval_at):
     if trunk_class:
         ov["model.trunk_class"] = trunk_class
     if USE_SYNTHETIC:
-        ov["data.source"] = "synthetic"
+        ov["+data.source"] = "synthetic"
     return [f"{k}={v}" for k, v in ov.items()]
