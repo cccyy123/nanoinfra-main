@@ -31,26 +31,63 @@ fi
 export HF_ENDPOINT="https://hf-mirror.com"
 export HUGGINGFACE_HUB_ENDPOINT="https://hf-mirror.com"
 
+# ── 1b. Install extra deps not in pyproject.toml ────────────────
+echo ""
+echo "Checking extra dependencies..."
+pip install -q pyarrow tiktoken rustbpe matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple 2>&1 | tee "$LOG_DIR/deps.log"
+
 # ── 2. Download data (skip if already exists) ───────────────────
 echo ""
-echo "[1/3] Checking FineWeb shards..."
+echo "[1/5] Checking FineWeb shards..."
 python exemplars/text_pretrain/data/download_shards.py 2>&1 | tee "$LOG_DIR/download.log"
 
-# ── 3. Run experiment ───────────────────────────────────────────
+# ── 3. Train tokenizer (skip if already exists) ──────────────────
 echo ""
-echo "[2/3] Running FFN expansion ablation..."
+echo "[2/5] Checking tokenizer..."
+if [ ! -f outputs/tokenizer/tokenizer.pkl ]; then
+    echo "Training tokenizer (50274 vocab, FineWeb data)..."
+    python -c "
+from pathlib import Path
+import pyarrow.parquet as pq
+from modalities.control import CONTROL_TOKENS, display_form
+from modalities.text.tokenizer import RustBPETokenizer
+
+specials = [display_form(n) for n in CONTROL_TOKENS]
+shards = sorted(Path('outputs/base_data').glob('shard_*_00000.parquet'))
+print(f'Shards: {len(shards)}, specials: {len(specials)}')
+
+def stream():
+    for s in shards:
+        for row in pq.read_table(s, columns=['text']).to_pylist():
+            yield row['text']
+
+tok = RustBPETokenizer.train_from_iterator(stream(), 50274, specials)
+tok.save('outputs/tokenizer')
+print(f'Done — vocab={tok.get_vocab_size()}')
+" 2>&1 | tee "$LOG_DIR/tokenizer.log"
+else
+    echo "Tokenizer already exists, skip."
+fi
+
+# ── 4. Run experiment ───────────────────────────────────────────
+echo ""
+echo "[3/5] Running FFN expansion ablation..."
 python "$PROJECT/run.py" 2>&1 | tee "$LOG_DIR/run.log"
 
-# ── 4. Plot results ─────────────────────────────────────────────
+# ── 5. Plot results ─────────────────────────────────────────────
 echo ""
-echo "[3/3] Plotting results..."
+echo "[4/5] Plotting results..."
 python "$PROJECT/plot.py" 2>&1 | tee "$LOG_DIR/plot.log"
 
-# ── 5. Git commit & push ────────────────────────────────────────
+# ── 6. Git commit & push ────────────────────────────────────────
 echo ""
 echo "========================================"
-echo "Committing & pushing..."
+echo "[5/5] Committing & pushing..."
 echo "========================================"
+
+# ensure git identity
+git config user.email "cccyy123@users.noreply.github.com" 2>/dev/null || true
+git config user.name "cccyy123" 2>/dev/null || true
 
 git add "$PROJECT/"
 
