@@ -88,9 +88,10 @@ def init_distributed(seed: int = 42):
     return is_distributed, rank, local_rank, world_size, device
 
 
-def build_system(trunk_cls, config, use_compile=True, head_softcap=15.0, seed=42):
+def build_system(trunk_cls, config, use_compile=True, head_softcap=15.0, seed=42,
+                 system_cls=None):
     """
-    Assemble the LMSystem (trunk + head) with FSDP and compile.
+    Assemble the System (trunk + head) with FSDP and compile.
 
     WHICH model is the orchestrator's decision — it imports the trunk class and
     passes it here (e.g. `build_system(GPT, gpt_config)`). HOW to assemble it
@@ -99,7 +100,7 @@ def build_system(trunk_cls, config, use_compile=True, head_softcap=15.0, seed=42
 
     construct -> init -> INJECT behavior family (__class__, before shard) -> shard
     (blocks, trunk, head) -> register head's extra forward methods (after shard) ->
-    wrap in LMSystem -> compile the trunk.
+    wrap in System -> compile the trunk.
 
     Trunk contract (see GPT for the reference implementation): __init__(config),
     init_weights(), forward(idx, ...) -> hidden [B,T,H], `blocks` (per-layer
@@ -118,10 +119,15 @@ def build_system(trunk_cls, config, use_compile=True, head_softcap=15.0, seed=42
         use_compile: Whether to compile the trunk (default: True)
         head_softcap: logit softcap for the LM head
         seed: RNG seed for init + training reproducibility (config key `seed`)
+        system_cls: System class to wrap trunk+head (default: LMSystem).
+                    Projects that need a custom loss() — e.g. MoE aux loss —
+                    pass their own subclass here.
 
     Returns:
-        dict: {'system': LMSystem, 'device', 'device_type', 'rank', 'world_size'}
+        dict: {'system': LMSystem (or system_cls), 'device', 'device_type', 'rank', 'world_size'}
     """
+    if system_cls is None:
+        system_cls = LMSystem
     # Initialize distributed environment
     is_distributed, rank, local_rank, world_size, device = init_distributed(seed=seed)
 
@@ -175,7 +181,7 @@ def build_system(trunk_cls, config, use_compile=True, head_softcap=15.0, seed=42
         trunk = trunk.to(dtype=torch.bfloat16)
         head = head.to(dtype=torch.bfloat16)
 
-    system = LMSystem(trunk, head)
+    system = system_cls(trunk, head)
     # Record the architecture as an assembly fact for checkpoint
     # self-description. Recorded HERE (not at save time) because fully_shard
     # rewrites the instance's class to FSDP{ClassName} — type(trunk).__name__

@@ -74,6 +74,17 @@ def resolve_trunk(path):
     return getattr(importlib.import_module(module_name), cls_name)
 
 
+def resolve_system_cls(path):
+    """The System class that wraps trunk+head. Default: LMSystem.
+    A config `model.system_class: pkg.mod.ClassName` names a subclass — e.g. an
+    MoESystem that adds load-balancing aux loss to the standard CE loss."""
+    if not path:
+        from core.model.system import LMSystem
+        return LMSystem
+    module_name, _, cls_name = str(path).rpartition(".")
+    return getattr(importlib.import_module(module_name), cls_name)
+
+
 def assemble_vocab(tokenizer):
     """[text, control] -> (layout, control_resolver).
 
@@ -140,10 +151,12 @@ def main(cfg: DictConfig) -> None:
     # project's architecture ablation). The orchestrator honors core's pluggable-
     # trunk seam rather than hardcoding one model.
     trunk_cls = resolve_trunk(model_config.get('trunk_class'))
+    system_cls = resolve_system_cls(model_config.get('system_class'))
     print0(f"\nAssembling d{depth} {trunk_cls.__name__} (dim={model_dim}, heads={num_heads}, "
            f"vocab={layout.vocab_size})...")
     setup = build_system(trunk_cls, gpt_config, use_compile=config.get('use_compile', True),
-                                                seed=config.get('seed', 42))
+                                                seed=config.get('seed', 42),
+                                                system_cls=system_cls)
     system = setup['system']
     rank = setup['rank']
     world_size = setup['world_size']
