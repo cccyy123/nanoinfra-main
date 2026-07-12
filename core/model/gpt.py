@@ -39,6 +39,7 @@ class GPTConfig:
     n_kv_head: int = 6 # number of key/value heads (GQA)
     n_embd: int = 768
     n_token_types: int = 3  # Number of token types (0=text, 1=motion, 2=control)
+    mlp_ratio: float = 4.0  # MLP hidden-dim expansion ratio (4 = standard)
 
 
 def norm(x):
@@ -209,8 +210,9 @@ class CausalSelfAttention(nn.Module):
 class MLP(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=False)
-        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=False)
+        hidden_dim = int(config.n_embd * config.mlp_ratio)
+        self.c_fc = nn.Linear(config.n_embd, hidden_dim, bias=False)
+        self.c_proj = nn.Linear(hidden_dim, config.n_embd, bias=False)
 
     def forward(self, x):
         x = self.c_fc(x)

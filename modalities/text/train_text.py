@@ -134,6 +134,7 @@ def main(cfg: DictConfig) -> None:
         n_kv_head=model_config['n_kv_head'],
         n_embd=model_dim,
         n_token_types=layout.n_token_types,
+        mlp_ratio=model_config.get('mlp_ratio', 4.0),
     )
     # WHICH trunk to build is the config's choice — default is the reference GPT,
     # but `model.trunk_class` names any class satisfying the trunk contract (e.g. a

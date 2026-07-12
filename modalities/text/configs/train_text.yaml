@@ -43,6 +43,7 @@ model:
   trunk_class: null             # default: the reference GPT. Set an import path
                                 #   (pkg.mod.ClassName) to build a custom trunk that
                                 #   satisfies the trunk contract — e.g. an architecture ablation.
+  mlp_ratio: 4.0                # MLP hidden expansion ratio (default 4x; try 2, 6, 8)
 
 max_steps: -1                   # auto (Chinchilla, target_param_data_ratio) unless overridden
 use_compile: true               # audit: +19-34% tok/s; keep on
