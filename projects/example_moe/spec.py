@@ -22,15 +22,19 @@ auto-sizing).
 """
 
 # --- the model + recipe  (edit here to re-target the whole pipeline) ---------
-DEPTH       = 6             # 6=smoke (~25M);  12=full (~135M)
+#DEPTH       = 6             # 6=smoke (~25M);  12=full (~135M)
+DEPTH       = 12
 LR_MAX      = "3e-4"
 SEED        = 42
 N_EXPERTS   = 4             # experts per MoE layer
 TOP_K       = 2             # selected per token
 
-SEQ_LEN, DBS, TBS = 512, 16, 16384
-MAX_TOKENS  = 20_000_000    # tiny on purpose — smoke test; bump for a real study
-WARMUP_STEPS = 100
+#SEQ_LEN, DBS, TBS = 512, 16, 16384
+SEQ_LEN, DBS, TBS = 1024, 16, 131072
+#MAX_TOKENS  = 20_000_000    # tiny on purpose — smoke test; bump for a real study
+MAX_TOKENS  = 2_700_000_000
+#WARMUP_STEPS = 100
+WARMUP_STEPS = 200
 N_EVALS     = 30            # log-spaced val evals
 EVAL_TOKENS = 131072        # 128K val tokens per eval
 
@@ -71,7 +75,7 @@ def train_overrides(trunk_class, system_class, max_steps, eval_at,
         "logging.log_every":      100,
         # MoE: compile may cause graph breaks around dynamic routing;
         # leave it off for reliability.  Enable if you've verified it works.
-        "use_compile":            "false",
+        "use_compile":            "true",
     }
     if trunk_class:
         ov["model.trunk_class"]  = trunk_class
